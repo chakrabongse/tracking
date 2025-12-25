@@ -80,7 +80,9 @@
 
     const markers = {};
     const vehicleDataStore = {}; // เก็บข้อมูลล่าสุดของรถทุกคัน
-    const conn = new WebSocket('ws://localhost:8080');
+    // ในไฟล์ index.html เปลี่ยนจาก localhost เป็นที่อยู่จริง
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const conn = new WebSocket(`${protocol}//${window.location.host}`);
 
     conn.onmessage = (e) => {
         const data = JSON.parse(e.data);
