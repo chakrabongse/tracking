@@ -19,5 +19,13 @@
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "ws": "^8.18.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chakrabongse/tracking.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chakrabongse/tracking/issues"
+  },
+  "homepage": "https://github.com/chakrabongse/tracking#readme"
 }
