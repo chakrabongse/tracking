@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Vehicle | Real-time Tracking</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: 'Kanit', sans-serif; background-color: #0b0e14; color: #e0e0e0; overflow: hidden; }
+        .navbar { background: rgba(30, 58, 138, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid #30363d; z-index: 1050; }
+        
+        /* Layout Grid */
+        #map { height: calc(100vh - 280px); border-radius: 15px; border: 1px solid #333; }
+        .sidebar-card { height: calc(100vh - 280px); background: #161b22; border-radius: 15px; overflow-y: auto; border: 1px solid #30363d; }
+        
+        /* Bottom Panel */
+        .detail-panel { height: 150px; background: #161b22; border: 1px solid #30363d; border-radius: 15px; margin-top: 15px; padding: 20px; }
+        
+        .card-header { background: #21262d !important; color: #58a6ff; border-bottom: 1px solid #30363d; position: sticky; top: 0; z-index: 10; }
+        .vehicle-item { background: #161b22; border-bottom: 1px solid #30363d; cursor: pointer; color: #c9d1d9; transition: 0.2s; }
+        .vehicle-item:hover { background: #1c2128; }
+        .active-move { border-left: 4px solid #238636 !important; }
+        .offline-unit { border-left: 4px solid #6e7681 !important; opacity: 0.7; }
+        .custom-div-icon i { font-size: 28px; text-shadow: 0 0 8px rgba(0,0,0,0.5); }
+        
+        /* สไตล์สำหรับการ์ดรายละเอียด */
+        .info-label { color: #8b949e; font-size: 12px; text-transform: uppercase; margin-bottom: 2px; }
+        .info-value { color: #58a6ff; font-weight: 600; font-size: 16px; }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark py-2 shadow-sm">
+    <div class="container-fluid">
+        <span class="navbar-brand fw-bold">
+            <i class="fas fa-satellite me-2 text-warning"></i> SMART TRACKING <small class="fw-light opacity-75">LIVE DASHBOARD</small>
+        </span>
+    </div>
+</nav>
+
+<div class="container-fluid mt-3">
+    <div class="row g-3">
+        <div class="col-lg-9">
+            <div id="map"></div>
+            
+            <div class="detail-panel shadow-lg" id="detail-card">
+                <div class="row align-items-center h-100" id="detail-content">
+                    <div class="col text-center text-muted">
+                        <i class="fas fa-mouse-pointer mb-2"></i><br>กรุณาเลือกยานพาหนะเพื่อดูรายละเอียด
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3">
+            <div class="card sidebar-card">
+                <div class="card-header fw-bold py-3 text-uppercase small d-flex justify-content-between">
+                    <span>ยานพาหนะทั้งหมด</span>
+                    <span id="vehicle-count" class="badge bg-primary">0</span>
+                </div>
+                <div class="list-group list-group-flush" id="vehicle-status">
+                    <div class="p-5 text-center text-muted">
+                        <div class="spinner-border spinner-border-sm mb-2"></div><br>รอข้อมูล...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map', { zoomControl: false }).setView([13.7563, 100.5018], 6);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', { pane: 'shadowPane' }).addTo(map);
+
+    const markers = {};
+    const vehicleDataStore = {}; // เก็บข้อมูลล่าสุดของรถทุกคัน
+    const conn = new WebSocket('ws://localhost:8080');
+
+    conn.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        vehicleDataStore[data.id] = data; // บันทึกข้อมูลลง Store
+        updateUI(data);
+    };
+
+    function showVehicleDetail(id) {
+        const vehicle = vehicleDataStore[id];
+        if (!vehicle) return;
+
+        const isOnline = vehicle.status === 'online';
+        const statusHTML = isOnline 
+            ? `<span class="status-dot bg-success"></span> Online` 
+            : `<span class="status-dot bg-secondary"></span> Offline`;
+
+        const content = `
+            <div class="col-md-3 border-end border-secondary">
+                <div class="info-label">ชื่อยานพาหนะ</div>
+                <div class="info-value"><i class="fas fa-truck me-2"></i>${vehicle.name}</div>
+                <div class="mt-2" style="font-size: 13px;">สถานะ: ${statusHTML}</div>
+            </div>
+            <div class="col-md-3 border-end border-secondary">
+                <div class="info-label">พิกัดปัจจุบัน</div>
+                <div class="info-value text-info">${parseFloat(vehicle.lat).toFixed(5)}, ${parseFloat(vehicle.lng).toFixed(5)}</div>
+                <div class="mt-2 text-warning" style="font-size: 13px;"><i class="far fa-clock me-1"></i>${vehicle.time}</div>
+            </div>
+            <div class="col-md-6">
+                <div class="info-label">ตำแหน่งล่าสุด</div>
+                <div class="info-value" style="font-size: 14px; font-weight: normal; color: #c9d1d9;">
+                    <i class="fas fa-map-marker-alt text-danger me-2"></i>${vehicle.address}
+                </div>
+            </div>
+        `;
+        document.getElementById('detail-content').innerHTML = content;
+        
+        // เลื่อนแผนที่ไปที่รถ
+        map.flyTo([vehicle.lat, vehicle.lng], 16);
+    }
+
+    function updateUI(data) {
+        const { id, name, lat, lng, address, time, status } = data; 
+        const isOnline = status === 'online';
+
+        // --- Marker Management ---
+        const iconColor = isOnline ? '#ffde00' : '#8b949e';
+        const carIcon = L.divIcon({
+            html : `<i class="fas fa-truck-moving" style="color: ${iconColor}"></i>`,
+            className: 'custom-div-icon',
+            iconSize: [30, 30]
+        });
+
+        if (markers[id]) {
+            markers[id].setLatLng([lat, lng]).setIcon(carIcon)
+                      .setPopupContent(`<b>${name}</b><br><small>อัปเดต: ${time}</small>`);
+        } else {
+            markers[id] = L.marker([lat, lng], {icon: carIcon}).addTo(map)
+                           .on('click', () => showVehicleDetail(id));
+        }
+
+        // --- Sidebar Management ---
+        const listContainer = document.getElementById('vehicle-status');
+        const existingItem = document.getElementById(`v-${id}`);
+        
+        const badgeColor = isOnline ? 'bg-success' : 'bg-secondary';
+        const statusText = isOnline ? 'LIVE' : 'OFFLINE';
+        const statusClass = isOnline ? 'active-move' : 'offline-unit';
+
+        const itemHtml = `
+            <div class="list-group-item vehicle-item p-3 ${statusClass}" id="v-${id}" onclick="showVehicleDetail('${id}')">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-white">${name}</span>
+                    <span class="badge ${badgeColor}" style="font-size: 8px;">${statusText}</span>
+                </div>
+                <div style="font-size: 11px;" class="text-truncate opacity-75 mt-1">
+                    <i class="fas fa-map-marker-alt me-1 text-danger"></i> ${address}
+                </div>
+            </div>`;
+
+        if (existingItem) {
+            existingItem.outerHTML = itemHtml;
+        } else {
+            if(Object.keys(markers).length === 1) listContainer.innerHTML = '';
+            listContainer.insertAdjacentHTML('afterbegin', itemHtml);
+        }
+        
+        document.getElementById('vehicle-count').innerText = Object.keys(markers).length;
+
+        // อัปเดตข้อมูลในการ์ดด้านล่างอัตโนมัติหากกำลังเปิดดูรถคันนั้นอยู่
+        const currentDetailId = document.querySelector('.info-value')?.innerText.includes(name);
+        if (currentDetailId) showVehicleDetail(id);
+    }
+</script>
+</body>
+</html>
