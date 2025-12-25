@@ -6,6 +6,7 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const axios = require('axios');
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
@@ -15,6 +16,13 @@ app.use(cors());
 app.use(bodyParser.json());
 
 let db;
+// serve static files
+app.use(express.static(__dirname));
+
+// หน้าแรก
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
 
 // ฟังก์ชันหาที่อยู่
 async function getAddress(lat, lng) {
